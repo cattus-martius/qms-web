@@ -71,6 +71,7 @@
 
         let accessToken = null;
         let fileId = null;
+        let parentFolderId = null;  // Додаю parent folder ID
         let tokenClient = null;
 
         window.onload = function() {
@@ -115,7 +116,8 @@
 
                 if (response.result.files && response.result.files.length > 0) {
                     fileId = response.result.files[0].id;
-                    console.log('Mailbox file found:', fileId);
+                    parentFolderId = response.result.files[0].parents ? response.result.files[0].parents[0] : null;
+                    console.log('Mailbox file found:', fileId, 'Parent:', parentFolderId);
                     checkMessages();
                 } else {
                     console.log('Mailbox file not found, creating...');
@@ -264,13 +266,20 @@
         }
 
         async function checkLockFile() {
+            if (!parentFolderId) {
+                console.error('Parent folder ID not found');
+                return false;
+            }
+            
             try {
                 const response = await gapi.client.drive.files.list({
-                    q: `name='.lock' and trashed=false`,
+                    q: `name='.lock' and '${parentFolderId}' in parents and trashed=false`,
                     fields: 'files(id, name)',
                     spaces: 'drive'
                 });
-                return response.result.files && response.result.files.length > 0;
+                const lockExists = response.result.files && response.result.files.length > 0;
+                console.log('Lock check:', lockExists);
+                return lockExists;
             } catch (error) {
                 console.error('Error checking lock:', error);
                 return false;
