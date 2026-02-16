@@ -340,22 +340,22 @@
         }
 
         async function newSession() {
-            if (!confirm('Видалити поточний mailbox і почати новий сеанс?')) {
+            if (!confirm('Очистити mailbox і почати новий сеанс?')) {
                 return;
             }
 
             try {
-                // Видалити старий файл
+                // Очистити файл (не видаляти!)
                 if (fileId) {
-                    await gapi.client.drive.files.delete({
-                        fileId: fileId
+                    await gapi.client.request({
+                        path: `/upload/drive/v3/files/${fileId}`,
+                        method: 'PATCH',
+                        params: { uploadType: 'media' },
+                        body: ''
                     });
-                    console.log('Old mailbox deleted');
-                }
-
-                // Створити новий
-                fileId = null;
-                await createMailboxFile();
+                    console.log('Mailbox cleared');
+                    document.getElementById('messages').innerHTML = '';
+                    alert('✅ Mailbox очищено! Можна починати новий сеанс.');
             } catch (error) {
                 console.error('Error creating new session:', error);
                 alert('❌ Помилка створення нового сеансу: ' + error.message);
