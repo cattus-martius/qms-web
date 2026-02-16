@@ -64,7 +64,7 @@
         const CONFIG = {
             clientId: '737474602371-6ip4hr60vrv69e84h05b386bde7ag5va.apps.googleusercontent.com',
             apiKey: 'AIzaSyDuSpV6pdXso-hN-GeTmFRSbEsrGKUet8o',
-            scope: 'https://www.googleapis.com/auth/drive',
+            scope: 'https://www.googleapis.com/auth/drive.file',
             mailboxPath: 'mailbox/q_vadym_chat/messages.txt'
         };
 
@@ -117,7 +117,33 @@
                     console.log('Mailbox file found:', fileId);
                     checkMessages();
                 } else {
-                    console.log('Mailbox file not found');
+                    console.log('Mailbox file not found, creating...');
+                    await createMailboxFile();
+                }
+            } catch (error) {
+                console.error('Error finding mailbox:', error);
+            }
+        }
+
+        async function createMailboxFile() {
+            try {
+                const response = await gapi.client.drive.files.create({
+                    resource: {
+                        name: 'messages.txt',
+                        mimeType: 'text/plain'
+                    },
+                    fields: 'id'
+                });
+                
+                fileId = response.result.id;
+                console.log('Mailbox file created:', fileId);
+                alert('✅ Mailbox файл створено! Тепер можна відправляти повідомлення.');
+                checkMessages();
+            } catch (error) {
+                console.error('Error creating mailbox:', error);
+                alert('❌ Помилка створення файлу: ' + error.message);
+            }
+        }
                 }
             } catch (error) {
                 console.error('Error finding mailbox:', error);
