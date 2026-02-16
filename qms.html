@@ -1083,7 +1083,7 @@
         });
 
         // Refresh Clipboard - оновлює превʼю
-        document.getElementById('btnRefreshClipboard').addEventListener('click', async () => {
+        async function updateClipboardPreview() {
             try {
                 const items = await navigator.clipboard.read();
                 for (const item of items) {
@@ -1108,7 +1108,15 @@
             } catch (error) {
                 document.getElementById('clipboardStatus').textContent = '❌ Error: ' + error.message;
             }
-        });
+        }
+        
+        document.getElementById('btnRefreshClipboard').addEventListener('click', updateClipboardPreview);
+        
+        // Auto-update on window focus
+        window.addEventListener('focus', updateClipboardPreview);
+        
+        // Initial check
+        updateClipboardPreview();
 
         // Send Clipboard - читає clipboard та відправляє image
         document.getElementById('btnSendClipboard').addEventListener('click', async () => {
