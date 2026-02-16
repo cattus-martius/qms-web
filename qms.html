@@ -356,6 +356,7 @@
                     console.log('Mailbox cleared');
                     document.getElementById('messages').innerHTML = '';
                     alert('✅ Mailbox очищено! Можна починати новий сеанс.');
+                }
             } catch (error) {
                 console.error('Error creating new session:', error);
                 alert('❌ Помилка створення нового сеансу: ' + error.message);
