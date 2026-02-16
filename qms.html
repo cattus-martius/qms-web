@@ -119,6 +119,7 @@
                                 <button class="media-button" id="btnSendMotion" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
                                 <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 50px; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff; text-align: center;">
                             </div>
+                            <button class="media-button" id="btnSwitchCamera" style="background: #555; cursor: pointer; opacity: 1;">🔄 Switch Camera</button>
                         </div>
                         <video id="cameraPreview" autoplay playsinline style="width: 200px; height: 150px;"></video>
                     </div>
@@ -710,11 +711,14 @@
         // Media controls
         let cameraStream = null;
         let micStream = null;
+        let currentFacingMode = 'user'; // 'user' or 'environment'
 
         document.getElementById('cbCamera').addEventListener('change', async (e) => {
             if (e.target.checked) {
                 try {
-                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: currentFacingMode } 
+                    });
                     const preview = document.getElementById('cameraPreview');
                     preview.srcObject = cameraStream;
                     preview.style.display = 'block';
@@ -729,6 +733,27 @@
                     document.getElementById('cameraPreview').style.display = 'none';
                     document.getElementById('cameraStatus').textContent = '';
                 }
+            }
+        });
+
+        document.getElementById('btnSwitchCamera').addEventListener('click', async () => {
+            if (!cameraStream) return;
+            
+            // Switch facing mode
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            
+            // Stop current stream
+            cameraStream.getTracks().forEach(track => track.stop());
+            
+            // Start new stream with new facing mode
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: currentFacingMode } 
+                });
+                const preview = document.getElementById('cameraPreview');
+                preview.srcObject = cameraStream;
+            } catch (error) {
+                document.getElementById('cameraStatus').textContent = '❌ Error: ' + error.message;
             }
         });
 
