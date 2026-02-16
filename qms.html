@@ -112,18 +112,22 @@
                         <label for="cbCamera">📹 Camera</label>
                         <span id="cameraStatus" class="media-status"></span>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: stretch;">
-                        <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
-                            <button class="media-button" id="btnSendFrame" style="background: #3498db; cursor: pointer; opacity: 1;">📸 Send Frame</button>
+                    
+                    <!-- Zoom slider (full width) -->
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <span style="color: #aaa; font-size: 14px;">🔍</span>
+                        <input type="range" id="zoomSlider" min="1" max="10" step="0.1" value="1" style="flex: 1; cursor: pointer;" disabled>
+                        <span id="zoomValue" style="color: #aaa; font-size: 14px; min-width: 35px;">1.0x</span>
+                    </div>
+                    
+                    <!-- Buttons and preview -->
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button class="media-button" id="btnSwitchCamera" style="background: #555; cursor: pointer; opacity: 1; width: 150px;">🔄 Switch Camera</button>
+                            <button class="media-button" id="btnSendFrame" style="background: #3498db; cursor: pointer; opacity: 1; width: 150px;">📸 Send Frame</button>
                             <div style="display: flex; gap: 8px;">
-                                <button class="media-button" id="btnSendMotion" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
-                                <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 50px; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff; text-align: center;">
-                            </div>
-                            <button class="media-button" id="btnSwitchCamera" style="background: #555; cursor: pointer; opacity: 1;">🔄 Switch Camera</button>
-                            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                                <span style="color: #aaa; font-size: 14px;">🔍</span>
-                                <input type="range" id="zoomSlider" min="1" max="10" step="0.1" value="1" style="flex: 1; cursor: pointer;" disabled>
-                                <span id="zoomValue" style="color: #aaa; font-size: 14px; min-width: 35px;">1.0x</span>
+                                <button class="media-button" id="btnSendMotion" style="background: #3498db; cursor: pointer; opacity: 1; width: 95px;">🎬 Send Motion</button>
+                                <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 47px; height: 42px; padding: 0; border: 1px solid #555; border-radius: 6px; background: #2c2c2c; color: #fff; text-align: center; font-size: 14px;">
                             </div>
                         </div>
                         <video id="cameraPreview" autoplay playsinline style="width: 200px; height: auto; border-radius: 6px; background: #000;"></video>
