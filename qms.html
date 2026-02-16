@@ -14,8 +14,15 @@
         .status.connected { color: #51cf66; }
         .messages { max-height: 400px; overflow-y: auto; border: 1px solid #333; border-radius: 6px; padding: 10px; margin-bottom: 10px; background: #0a0a0a; }
         .message { padding: 8px 12px; margin-bottom: 8px; border-radius: 6px; background: #1a1a1a; }
-        .message .meta { font-size: 11px; color: #666; margin-bottom: 4px; }
+        .message .meta { font-size: 11px; color: #666; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
         .message .text { font-size: 14px; color: #fff; }
+        .message .info-btn { background: #333; border: none; color: #aaa; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .message .info-btn:hover { background: #444; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
+        .modal-content { background: #1a1a1a; margin: 5% auto; padding: 20px; border: 1px solid #333; border-radius: 8px; width: 80%; max-width: 600px; max-height: 70%; overflow-y: auto; }
+        .modal-close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-close:hover { color: #fff; }
+        .json-content { background: #0a0a0a; padding: 15px; border-radius: 6px; color: #fff; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; }
         .input-group { display: flex; gap: 10px; margin-bottom: 10px; }
         input[type="text"] { flex: 1; padding: 12px; border: 1px solid #444; border-radius: 6px; font-size: 16px; background: #2a2a2a; color: #fff; }
         input[type="text"]:focus { outline: none; border-color: #555; }
@@ -52,6 +59,7 @@
     <div class="container">
         <div class="header-line">
             <h1>💙 Q Mailbox</h1>
+            <button class="btn-secondary" onclick="newSession()" style="padding: 8px 16px; font-size: 14px;">🗑️ Новий сеанс</button>
             <span class="server-info" id="serverInfo">Google Drive: 🔴 Not ready</span>
         </div>
         
@@ -76,13 +84,20 @@
                 </div>
 
                 <div class="input-group">
-                    <input type="text" id="messageInput" placeholder="Введіть повідомлення..." />
-                    <button class="btn-primary" onclick="sendMessage()">→</button>
+                    <input type="text" id="messageInput" placeholder="Введіть повідомлення..." style="min-height: 60px;" />
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <button class="btn-primary" onclick="sendMessage()" style="width: 48px; height: 48px; border-radius: 50%;">→</button>
+                        <button class="btn-secondary" onclick="checkMessages()" style="width: 48px; height: 48px; border-radius: 50%;">🔄</button>
+                    </div>
                 </div>
+            </div>
 
-                <div class="input-group">
-                    <button class="btn-secondary" onclick="checkMessages()" style="flex: 1;">🔄 Перевірити</button>
-                    <button class="btn-secondary" onclick="newSession()" style="flex: 1;">🗑️ Новий сеанс</button>
+            <!-- Modal for JSON -->
+            <div id="jsonModal" class="modal">
+                <div class="modal-content">
+                    <span class="modal-close" onclick="closeModal()">&times;</span>
+                    <h3 style="color: #fff; margin-bottom: 15px;">Message Details</h3>
+                    <div id="jsonContent" class="json-content"></div>
                 </div>
             </div>
 
@@ -500,25 +515,77 @@
                 if (match) {
                     const timestamp = match[1];
                     const from = match[2];
-                    const text = lines.slice(1).join(' ').trim();
+                    const jsonText = lines.slice(1).join('\n').trim();
                     
-                    if (text) {
-                        addMessageToUI(from, text, timestamp);
+                    if (jsonText) {
+                        try {
+                            // Спробувати парсити JSON
+                            const payload = JSON.parse(jsonText);
+                            let displayText = '';
+                            
+                            if (payload.message) {
+                                displayText = payload.message;
+                            } else if (payload.action) {
+                                // Media actions
+                                const actionMap = {
+                                    'camera_frame': '📸 Camera Frame',
+                                    'camera_motion': '🎬 Motion Series',
+                                    'audio_record': '🎤 Audio Recording',
+                                    'clipboard_send': '📋 Clipboard Image'
+                                };
+                                displayText = actionMap[payload.action] || payload.action;
+                            } else {
+                                displayText = jsonText;
+                            }
+                            
+                            addMessageToUI(from, displayText, timestamp, jsonText);
+                        } catch (e) {
+                            // Якщо не JSON - показати як є
+                            addMessageToUI(from, jsonText, timestamp, null);
+                        }
                     }
                 }
             }
         }
 
-        function addMessageToUI(from, text, timestamp) {
+        function addMessageToUI(from, text, timestamp, fullJson) {
             const messagesDiv = document.getElementById('messages');
             const messageEl = document.createElement('div');
             messageEl.className = 'message';
+            
+            const metaHtml = fullJson 
+                ? `<div class="meta"><span>${from} • ${timestamp}</span><button class="info-btn" onclick='showJson(${JSON.stringify(fullJson).replace(/'/g, "&#39;")})'>ℹ️ Details</button></div>`
+                : `<div class="meta">${from} • ${timestamp}</div>`;
+            
             messageEl.innerHTML = `
-                <div class="meta">${from} • ${timestamp}</div>
+                ${metaHtml}
                 <div class="text">${text.trim()}</div>
             `;
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showJson(jsonText) {
+            try {
+                const payload = JSON.parse(jsonText);
+                document.getElementById('jsonContent').textContent = JSON.stringify(payload, null, 2);
+                document.getElementById('jsonModal').style.display = 'block';
+            } catch (e) {
+                document.getElementById('jsonContent').textContent = jsonText;
+                document.getElementById('jsonModal').style.display = 'block';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('jsonModal').style.display = 'none';
+        }
+
+        // Close modal on outside click
+        window.onclick = function(event) {
+            const modal = document.getElementById('jsonModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
         }
 
         document.getElementById('messageInput').addEventListener('keypress', (e) => {
