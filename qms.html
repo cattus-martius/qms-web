@@ -404,14 +404,21 @@
                 const currentContent = await readFile();
                 const newContent = currentContent + formattedMessage;
 
-                await gapi.client.request({
+                console.log('[SEND] Writing to file, old length:', currentContent.length, 'new length:', newContent.length);
+                
+                const response = await gapi.client.request({
                     path: `/upload/drive/v3/files/${fileId}`,
                     method: 'PATCH',
                     params: { uploadType: 'media' },
                     body: newContent
                 });
+                
+                console.log('[SEND] Response status:', response.status);
 
                 input.value = '';
+                
+                // Почекати трохи для синхронізації Google Drive
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 // Оновити UI (прочитати весь файл заново)
                 await checkMessages();
