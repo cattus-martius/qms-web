@@ -127,17 +127,44 @@
 
         async function createMailboxFile() {
             try {
+                // Спочатку знайти/створити папку mailbox/q_vadym_chat
+                const folderPath = ['mailbox', 'q_vadym_chat'];
+                let parentId = 'root';
+                
+                for (const folderName of folderPath) {
+                    const folderResponse = await gapi.client.drive.files.list({
+                        q: `name='${folderName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                        fields: 'files(id)'
+                    });
+                    
+                    if (folderResponse.result.files && folderResponse.result.files.length > 0) {
+                        parentId = folderResponse.result.files[0].id;
+                    } else {
+                        const createFolderResponse = await gapi.client.drive.files.create({
+                            resource: {
+                                name: folderName,
+                                mimeType: 'application/vnd.google-apps.folder',
+                                parents: [parentId]
+                            },
+                            fields: 'id'
+                        });
+                        parentId = createFolderResponse.result.id;
+                    }
+                }
+                
+                // Тепер створити messages.txt в папці
                 const response = await gapi.client.drive.files.create({
                     resource: {
                         name: 'messages.txt',
-                        mimeType: 'text/plain'
+                        mimeType: 'text/plain',
+                        parents: [parentId]
                     },
                     fields: 'id'
                 });
                 
                 fileId = response.result.id;
                 console.log('Mailbox file created:', fileId);
-                alert('✅ Mailbox файл створено! Тепер можна відправляти повідомлення.');
+                alert('✅ Mailbox файл створено в mailbox/q_vadym_chat/! Тепер можна відправляти повідомлення.');
                 checkMessages();
             } catch (error) {
                 console.error('Error creating mailbox:', error);
