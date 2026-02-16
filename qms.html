@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com https://www.gstatic.com;">
     <title>Q Mailbox</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,52 +58,50 @@
         </div>
     </div>
 
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
-        // Config: для GitHub Pages вбудовані credentials (API Key обмежений referrer)
         const CONFIG = {
             clientId: '737474602371-6ip4hr60vrv69e84h05b386bde7ag5va.apps.googleusercontent.com',
             apiKey: 'AIzaSyDuSpV6pdXso-hN-GeTmFRSbEsrGKUet8o',
-            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
             scope: 'https://www.googleapis.com/auth/drive.file',
             mailboxPath: 'mailbox/q_vadym_chat/messages.txt'
         };
 
-        let isAuthorized = false;
+        let accessToken = null;
         let fileId = null;
+        let tokenClient = null;
 
-        function handleAuth() {
-            gapi.load('client:auth2', initClient);
-        }
+        window.onload = function() {
+            gapi.load('client', initGapi);
+        };
 
-        function initClient() {
+        function initGapi() {
             gapi.client.init({
                 apiKey: CONFIG.apiKey,
-                clientId: CONFIG.clientId,
-                discoveryDocs: CONFIG.discoveryDocs,
-                scope: CONFIG.scope,
-                cookiepolicy: 'single_host_origin'
-            }).then(() => {
-                const authInstance = gapi.auth2.getAuthInstance();
-                authInstance.isSignedIn.listen(updateSigninStatus);
-                
-                if (authInstance.isSignedIn.get()) {
-                    updateSigninStatus(true);
-                } else {
-                    authInstance.signIn();
-                }
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
             });
         }
 
-        function updateSigninStatus(isSignedIn) {
-            if (isSignedIn) {
-                isAuthorized = true;
-                document.getElementById('authSection').classList.add('hidden');
-                document.getElementById('mailboxSection').classList.remove('hidden');
-                document.getElementById('status').className = 'status connected';
-                document.getElementById('status').textContent = '✅ Підключено до Google Drive';
-                findMailboxFile();
-            }
+        function handleAuth() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CONFIG.clientId,
+                scope: CONFIG.scope,
+                callback: (response) => {
+                    if (response.access_token) {
+                        accessToken = response.access_token;
+                        gapi.client.setToken({ access_token: accessToken });
+                        
+                        document.getElementById('authSection').classList.add('hidden');
+                        document.getElementById('mailboxSection').classList.remove('hidden');
+                        document.getElementById('status').className = 'status connected';
+                        document.getElementById('status').textContent = '✅ Підключено до Google Drive';
+                        
+                        findMailboxFile();
+                    }
+                }
+            });
+            tokenClient.requestAccessToken();
         }
 
         async function findMailboxFile() {
