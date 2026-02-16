@@ -927,19 +927,117 @@
             }
         });
 
-        // Test Voice - просто відправляє команду
-        document.getElementById('btnTestVoice').addEventListener('click', async () => {
-            await sendMediaMessage('speaker_test', { type: 'speaker_test' });
+        // Test Voice - промовляє текст локально
+        document.getElementById('btnTestVoice').addEventListener('click', () => {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance('Тест голосу');
+                const rate = parseFloat(document.getElementById('speakerRate').value) || 1.0;
+                const volume = parseInt(document.getElementById('speakerVolume').value) / 100 || 1.0;
+                utterance.rate = rate;
+                utterance.volume = volume;
+                utterance.lang = 'uk-UA';
+                speechSynthesis.speak(utterance);
+            } else {
+                alert('Speech Synthesis не підтримується');
+            }
         });
 
-        // Refresh Clipboard - просто відправляє команду
+        // Refresh Clipboard - оновлює превʼю
         document.getElementById('btnRefreshClipboard').addEventListener('click', async () => {
-            await sendMediaMessage('clipboard_refresh', { type: 'clipboard_refresh' });
+            try {
+                const items = await navigator.clipboard.read();
+                for (const item of items) {
+                    if (item.types.includes('image/png')) {
+                        const blob = await item.getType('image/png');
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.getElementById('screenPreview');
+                            const ctx = canvas.getContext('2d');
+                            const scale = Math.min(200 / img.width, 150 / img.height);
+                            canvas.width = img.width * scale;
+                            canvas.height = img.height * scale;
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            canvas.style.display = 'block';
+                            document.getElementById('clipboardStatus').textContent = '✅ Image in clipboard';
+                        };
+                        img.src = URL.createObjectURL(blob);
+                        return;
+                    }
+                }
+                document.getElementById('clipboardStatus').textContent = '📋 No image in clipboard';
+            } catch (error) {
+                document.getElementById('clipboardStatus').textContent = '❌ Error: ' + error.message;
+            }
         });
 
-        // Send Clipboard - просто відправляє команду
+        // Send Clipboard - читає clipboard та відправляє image
         document.getElementById('btnSendClipboard').addEventListener('click', async () => {
-            await sendMediaMessage('clipboard_send', { type: 'clipboard' });
+            try {
+                document.getElementById('btnSendClipboard').disabled = true;
+                document.getElementById('btnSendClipboard').textContent = '📋 Sending...';
+                
+                const items = await navigator.clipboard.read();
+                let imageData = null;
+                
+                for (const item of items) {
+                    if (item.types.includes('image/png')) {
+                        const blob = await item.getType('image/png');
+                        const reader = new FileReader();
+                        imageData = await new Promise(resolve => {
+                            reader.onload = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                        break;
+                    }
+                }
+                
+                if (!imageData) {
+                    throw new Error('No image in clipboard');
+                }
+                
+                const telemetry = collectTelemetry();
+                const now = new Date();
+                const timestamp = now.getFullYear() + '-' + 
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(now.getDate()).padStart(2, '0') + ' ' +
+                    String(now.getHours()).padStart(2, '0') + ':' + 
+                    String(now.getMinutes()).padStart(2, '0') + ':' + 
+                    String(now.getSeconds()).padStart(2, '0');
+                
+                const payload = {
+                    action: 'clipboard_send',
+                    media: {
+                        type: 'clipboard',
+                        data: imageData
+                    },
+                    telemetry: telemetry,
+                    timestamp: timestamp
+                };
+                
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
+                
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+                
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+                
+                await checkMessages();
+                
+                document.getElementById('btnSendClipboard').textContent = '✅ Sent!';
+                setTimeout(() => {
+                    document.getElementById('btnSendClipboard').textContent = '📋 Send Clipboard';
+                    document.getElementById('btnSendClipboard').disabled = false;
+                }, 2000);
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+                document.getElementById('btnSendClipboard').textContent = '📋 Send Clipboard';
+                document.getElementById('btnSendClipboard').disabled = false;
+            }
         });
 
         async function sendMediaMessage(action, mediaData) {
