@@ -1086,10 +1086,15 @@
         async function updateClipboardPreview() {
             try {
                 const items = await navigator.clipboard.read();
-                console.log('Clipboard items:', items.length);
+                
+                if (items.length === 0) {
+                    document.getElementById('clipboardStatus').textContent = '📋 Clipboard empty';
+                    return;
+                }
                 
                 for (const item of items) {
-                    console.log('Item types:', item.types);
+                    // Show what types are available
+                    document.getElementById('clipboardStatus').textContent = '🔍 Types: ' + item.types.join(', ');
                     
                     // Try image/png first
                     if (item.types.includes('image/png')) {
@@ -1103,7 +1108,7 @@
                             canvas.height = img.height * scale;
                             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                             canvas.style.display = 'block';
-                            document.getElementById('clipboardStatus').textContent = '✅ Image in clipboard';
+                            document.getElementById('clipboardStatus').textContent = '✅ PNG image';
                         };
                         img.src = URL.createObjectURL(blob);
                         return;
@@ -1121,16 +1126,17 @@
                             canvas.height = img.height * scale;
                             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                             canvas.style.display = 'block';
-                            document.getElementById('clipboardStatus').textContent = '✅ Image in clipboard';
+                            document.getElementById('clipboardStatus').textContent = '✅ JPEG image';
                         };
                         img.src = URL.createObjectURL(blob);
                         return;
                     }
                 }
-                document.getElementById('clipboardStatus').textContent = '📋 No image in clipboard';
+                
+                // No image found
+                document.getElementById('clipboardStatus').textContent = '❌ No image (check types above)';
             } catch (error) {
-                console.error('Clipboard error:', error);
-                document.getElementById('clipboardStatus').textContent = '❌ Error: ' + error.message;
+                document.getElementById('clipboardStatus').textContent = '❌ ' + error.message;
             }
         }
         
