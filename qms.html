@@ -97,8 +97,16 @@
                         <label for="cbCamera">📹 Camera</label>
                         <span id="cameraStatus" class="media-status"></span>
                     </div>
-                    <video id="cameraPreview" autoplay playsinline></video>
-                    <button class="media-button" disabled>📸 Send Frame (disabled)</button>
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button class="media-button" onclick="sendFrame()" style="background: #3498db; cursor: pointer; opacity: 1;">📸 Send Frame</button>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="media-button" onclick="sendMotion()" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
+                                <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 50px; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff; text-align: center;">
+                            </div>
+                        </div>
+                        <video id="cameraPreview" autoplay playsinline style="width: 200px; height: 150px;"></video>
+                    </div>
                 </div>
                 
                 <!-- Microphone Section -->
@@ -108,7 +116,7 @@
                         <label for="cbMicrophone">🎤 Microphone</label>
                         <span id="micStatus" class="media-status"></span>
                     </div>
-                    <button class="media-button" disabled>🎤 Record (disabled)</button>
+                    <button class="media-button" onclick="recordAudio()" style="background: #3498db; cursor: pointer; opacity: 1;">🎤 Record</button>
                 </div>
                 
                 <!-- Speaker Section -->
@@ -118,7 +126,16 @@
                         <label for="cbSpeaker">🔊 Speaker</label>
                         <span id="speakerStatus" class="media-status"></span>
                     </div>
-                    <button class="media-button" disabled>🎤 Test Voice (disabled)</button>
+                    <button class="media-button" onclick="testVoice()" style="margin-bottom: 10px; background: #3498db; cursor: pointer; opacity: 1;">🎤 Test Voice</button>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <label style="color: #fff; min-width: 80px;">Speed:</label>
+                        <input type="number" id="speakerRate" min="0.5" max="2.0" step="0.1" value="1.0" style="width: 60px; padding: 4px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff;">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label style="color: #fff; min-width: 80px;">Volume:</label>
+                        <input type="range" id="speakerVolume" min="0" max="100" value="100" style="flex: 1;">
+                        <span id="volumeValue" style="color: #fff; min-width: 40px;">100%</span>
+                    </div>
                 </div>
                 
                 <!-- Clipboard Section -->
@@ -127,14 +144,25 @@
                         <label>📋 Clipboard</label>
                         <span id="clipboardStatus" class="media-status"></span>
                     </div>
-                    <canvas id="screenPreview"></canvas>
-                    <button class="media-button" disabled>📋 Send Clipboard (disabled)</button>
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button class="media-button" onclick="refreshClipboard()" style="background: #3498db; cursor: pointer; opacity: 1;">🔄 Refresh Clipboard</button>
+                            <button class="media-button" onclick="sendClipboard()" style="background: #3498db; cursor: pointer; opacity: 1;">📋 Send Clipboard</button>
+                        </div>
+                        <canvas id="screenPreview" style="max-width: 200px; max-height: 150px; border: 1px solid #555; border-radius: 4px; display: none;"></canvas>
+                    </div>
                 </div>
             </div>
 
             <!-- Settings Tab -->
             <div id="settings-tab" class="tab-content">
                 <h3>Telemetry</h3>
+                
+                <div class="sensor-item">
+                    <input type="checkbox" id="cbLight" checked>
+                    <label for="cbLight">💡 Light</label>
+                    <span id="tvLight" class="sensor-value">0 lux</span>
+                </div>
                 
                 <div class="sensor-item">
                     <input type="checkbox" id="cbAccelerometer" checked>
@@ -158,6 +186,18 @@
                     <input type="checkbox" id="cbBattery" checked>
                     <label for="cbBattery">🔋 Battery</label>
                     <span id="tvBattery" class="sensor-value">0%</span>
+                </div>
+                
+                <div class="sensor-item">
+                    <input type="checkbox" id="cbPressure" checked>
+                    <label for="cbPressure">🔊 Pressure</label>
+                    <span id="tvPressure" class="sensor-value">0 hPa</span>
+                </div>
+                
+                <div class="sensor-item">
+                    <input type="checkbox" id="cbProximity" checked>
+                    <label for="cbProximity">👆 Proximity</label>
+                    <span id="tvProximity" class="sensor-value">far</span>
                 </div>
                 
                 <div class="sensor-item">
@@ -325,6 +365,9 @@
                     return;
                 }
 
+                // Зібрати телеметрію
+                const telemetry = collectTelemetry();
+
                 // Локальний час (не UTC!)
                 const now = new Date();
                 const timestamp = now.getFullYear() + '-' + 
@@ -333,7 +376,15 @@
                     String(now.getHours()).padStart(2, '0') + ':' + 
                     String(now.getMinutes()).padStart(2, '0') + ':' + 
                     String(now.getSeconds()).padStart(2, '0');
-                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${message}\n\n`;
+
+                // JSON формат
+                const payload = {
+                    message: message,
+                    telemetry: telemetry,
+                    timestamp: timestamp
+                };
+
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
 
                 const currentContent = await readFile();
                 const newContent = currentContent + formattedMessage;
@@ -353,6 +404,37 @@
                 console.error('Error sending message:', error);
                 alert('Помилка відправки: ' + error.message);
             }
+        }
+
+        function collectTelemetry() {
+            const telemetry = {};
+            
+            if (document.getElementById('cbAccelerometer')?.checked) {
+                telemetry.accelerometer = document.getElementById('tvAccelerometer').textContent;
+            }
+            if (document.getElementById('cbGyroscope')?.checked) {
+                telemetry.gyroscope = document.getElementById('tvGyroscope').textContent;
+            }
+            if (document.getElementById('cbCompass')?.checked) {
+                telemetry.compass = document.getElementById('tvCompass').textContent;
+            }
+            if (document.getElementById('cbBattery')?.checked) {
+                telemetry.battery = document.getElementById('tvBattery').textContent;
+            }
+            if (document.getElementById('cbGPS')?.checked) {
+                telemetry.gps = document.getElementById('tvGPS').textContent;
+            }
+            if (document.getElementById('cbLight')?.checked) {
+                telemetry.light = document.getElementById('tvLight').textContent;
+            }
+            if (document.getElementById('cbPressure')?.checked) {
+                telemetry.pressure = document.getElementById('tvPressure').textContent;
+            }
+            if (document.getElementById('cbProximity')?.checked) {
+                telemetry.proximity = document.getElementById('tvProximity').textContent;
+            }
+            
+            return telemetry;
         }
 
         async function checkMessages() {
@@ -604,6 +686,85 @@
                 document.getElementById('speakerStatus').textContent = '';
             }
         });
+
+        // Volume slider update
+        document.getElementById('speakerVolume').addEventListener('input', (e) => {
+            document.getElementById('volumeValue').textContent = e.target.value + '%';
+        });
+
+        // Media send functions
+        async function sendFrame() {
+            await sendMediaMessage('camera_frame', { type: 'frame' });
+        }
+
+        async function sendMotion() {
+            const frames = document.getElementById('motionFrames').value;
+            await sendMediaMessage('camera_motion', { type: 'motion', frames: parseInt(frames) });
+        }
+
+        async function recordAudio() {
+            await sendMediaMessage('audio_record', { type: 'audio' });
+        }
+
+        async function testVoice() {
+            await sendMediaMessage('speaker_test', { type: 'speaker_test' });
+        }
+
+        async function refreshClipboard() {
+            await sendMediaMessage('clipboard_refresh', { type: 'clipboard_refresh' });
+        }
+
+        async function sendClipboard() {
+            await sendMediaMessage('clipboard_send', { type: 'clipboard' });
+        }
+
+        async function sendMediaMessage(action, mediaData) {
+            if (!fileId) {
+                alert('Mailbox файл не знайдено');
+                return;
+            }
+
+            try {
+                const lockExists = await checkLockFile();
+                if (lockExists) {
+                    alert('⏳ QBS пише повідомлення, зачекайте...');
+                    return;
+                }
+
+                const telemetry = collectTelemetry();
+                const now = new Date();
+                const timestamp = now.getFullYear() + '-' + 
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(now.getDate()).padStart(2, '0') + ' ' +
+                    String(now.getHours()).padStart(2, '0') + ':' + 
+                    String(now.getMinutes()).padStart(2, '0') + ':' + 
+                    String(now.getSeconds()).padStart(2, '0');
+
+                const payload = {
+                    action: action,
+                    media: mediaData,
+                    telemetry: telemetry,
+                    timestamp: timestamp
+                };
+
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
+
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+
+                await checkMessages();
+            } catch (error) {
+                console.error('Error sending media:', error);
+                alert('Помилка відправки: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
