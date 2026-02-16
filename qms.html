@@ -207,6 +207,13 @@
             }
 
             try {
+                // Перевірити lock файл
+                const lockExists = await checkLockFile();
+                if (lockExists) {
+                    alert('⏳ QBS пише повідомлення, зачекайте...');
+                    return;
+                }
+
                 // Локальний час (не UTC!)
                 const now = new Date();
                 const timestamp = now.getFullYear() + '-' + 
@@ -252,6 +259,20 @@
                 alt: 'media'
             });
             return response.body || '';
+        }
+
+        async function checkLockFile() {
+            try {
+                const response = await gapi.client.drive.files.list({
+                    q: `name='.lock' and trashed=false`,
+                    fields: 'files(id, name)',
+                    spaces: 'drive'
+                });
+                return response.result.files && response.result.files.length > 0;
+            } catch (error) {
+                console.error('Error checking lock:', error);
+                return false;
+            }
         }
 
         function parseAndDisplayMessages(content) {
