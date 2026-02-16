@@ -81,7 +81,8 @@
                 apiKey: CONFIG.apiKey,
                 clientId: CONFIG.clientId,
                 discoveryDocs: CONFIG.discoveryDocs,
-                scope: CONFIG.scope
+                scope: CONFIG.scope,
+                cookiepolicy: 'single_host_origin'
             }).then(() => {
                 const authInstance = gapi.auth2.getAuthInstance();
                 authInstance.isSignedIn.listen(updateSigninStatus);
