@@ -235,7 +235,9 @@
                 });
 
                 input.value = '';
-                addMessageToUI('QMS', message, timestamp);
+                
+                // Оновити UI (прочитати весь файл заново)
+                await checkMessages();
             } catch (error) {
                 console.error('Error sending message:', error);
                 alert('Помилка відправки: ' + error.message);
