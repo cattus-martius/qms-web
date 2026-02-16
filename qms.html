@@ -273,7 +273,7 @@
             
             try {
                 const response = await gapi.client.drive.files.list({
-                    q: `name='lock.txt' and '${parentFolderId}' in parents and trashed=false`,
+                    q: `name='.lock' and '${parentFolderId}' in parents and trashed=false`,
                     fields: 'files(id, name)',
                     spaces: 'drive'
                 });
