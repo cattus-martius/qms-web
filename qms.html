@@ -99,9 +99,9 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: flex-start;">
                         <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <button class="media-button" onclick="sendFrame()" style="background: #3498db; cursor: pointer; opacity: 1;">📸 Send Frame</button>
+                            <button class="media-button" id="btnSendFrame" style="background: #3498db; cursor: pointer; opacity: 1;">📸 Send Frame</button>
                             <div style="display: flex; gap: 8px;">
-                                <button class="media-button" onclick="sendMotion()" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
+                                <button class="media-button" id="btnSendMotion" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
                                 <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 50px; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff; text-align: center;">
                             </div>
                         </div>
@@ -116,7 +116,7 @@
                         <label for="cbMicrophone">🎤 Microphone</label>
                         <span id="micStatus" class="media-status"></span>
                     </div>
-                    <button class="media-button" onclick="recordAudio()" style="background: #3498db; cursor: pointer; opacity: 1;">🎤 Record</button>
+                    <button class="media-button" id="btnRecord" style="background: #3498db; cursor: pointer; opacity: 1;">🎤 Record</button>
                 </div>
                 
                 <!-- Speaker Section -->
@@ -126,7 +126,7 @@
                         <label for="cbSpeaker">🔊 Speaker</label>
                         <span id="speakerStatus" class="media-status"></span>
                     </div>
-                    <button class="media-button" onclick="testVoice()" style="margin-bottom: 10px; background: #3498db; cursor: pointer; opacity: 1;">🎤 Test Voice</button>
+                    <button class="media-button" id="btnTestVoice" style="margin-bottom: 10px; background: #3498db; cursor: pointer; opacity: 1;">🎤 Test Voice</button>
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                         <label style="color: #fff; min-width: 80px;">Speed:</label>
                         <input type="number" id="speakerRate" min="0.5" max="2.0" step="0.1" value="1.0" style="width: 60px; padding: 4px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff;">
@@ -146,8 +146,8 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: flex-start;">
                         <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <button class="media-button" onclick="refreshClipboard()" style="background: #3498db; cursor: pointer; opacity: 1;">🔄 Refresh Clipboard</button>
-                            <button class="media-button" onclick="sendClipboard()" style="background: #3498db; cursor: pointer; opacity: 1;">📋 Send Clipboard</button>
+                            <button class="media-button" id="btnRefreshClipboard" style="background: #3498db; cursor: pointer; opacity: 1;">🔄 Refresh Clipboard</button>
+                            <button class="media-button" id="btnSendClipboard" style="background: #3498db; cursor: pointer; opacity: 1;">📋 Send Clipboard</button>
                         </div>
                         <canvas id="screenPreview" style="max-width: 200px; max-height: 150px; border: 1px solid #555; border-radius: 4px; display: none;"></canvas>
                     </div>
@@ -693,30 +693,254 @@
         });
 
         // Media send functions
-        async function sendFrame() {
-            await sendMediaMessage('camera_frame', { type: 'frame' });
-        }
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
 
-        async function sendMotion() {
-            const frames = document.getElementById('motionFrames').value;
-            await sendMediaMessage('camera_motion', { type: 'motion', frames: parseInt(frames) });
-        }
+        document.getElementById('btnRecord').addEventListener('click', async () => {
+            if (!isRecording) {
+                // Start recording
+                if (!micStream) {
+                    alert('Спочатку увімкніть мікрофон!');
+                    return;
+                }
+                
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(micStream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    
+                    reader.onloadend = async () => {
+                        const base64Audio = reader.result.split(',')[1];
+                        const telemetry = collectTelemetry();
+                        const now = new Date();
+                        const timestamp = now.getFullYear() + '-' + 
+                            String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(now.getDate()).padStart(2, '0') + ' ' +
+                            String(now.getHours()).padStart(2, '0') + ':' + 
+                            String(now.getMinutes()).padStart(2, '0') + ':' + 
+                            String(now.getSeconds()).padStart(2, '0');
+                        
+                        document.getElementById('btnRecord').textContent = '⏳ Sending...';
+                        document.getElementById('btnRecord').disabled = true;
+                        
+                        try {
+                            const payload = {
+                                action: 'audio_record',
+                                media: {
+                                    type: 'audio',
+                                    data: base64Audio,
+                                    format: 'webm'
+                                },
+                                telemetry: telemetry,
+                                timestamp: timestamp
+                            };
+                            
+                            const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
+                            
+                            const currentContent = await readFile();
+                            const newContent = currentContent + formattedMessage;
+                            
+                            await gapi.client.request({
+                                path: `/upload/drive/v3/files/${fileId}`,
+                                method: 'PATCH',
+                                params: { uploadType: 'media' },
+                                body: newContent
+                            });
+                            
+                            await checkMessages();
+                        } catch (error) {
+                            alert('Помилка відправки: ' + error.message);
+                        }
+                        
+                        document.getElementById('btnRecord').textContent = '🎤 Record';
+                        document.getElementById('btnRecord').disabled = false;
+                    };
+                    
+                    reader.readAsDataURL(audioBlob);
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                document.getElementById('btnRecord').textContent = '🔴 Recording...';
+                document.getElementById('btnRecord').style.background = '#e74c3c';
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+                isRecording = false;
+                document.getElementById('btnRecord').textContent = '🎤 Record';
+                document.getElementById('btnRecord').style.background = '#3498db';
+            }
+        });
 
-        async function recordAudio() {
-            await sendMediaMessage('audio_record', { type: 'audio' });
-        }
+        // Send Frame
+        document.getElementById('btnSendFrame').addEventListener('click', async () => {
+            if (!cameraStream) {
+                alert('Спочатку увімкніть камеру!');
+                return;
+            }
+            
+            try {
+                document.getElementById('btnSendFrame').disabled = true;
+                document.getElementById('btnSendFrame').textContent = '📸 Sending...';
+                
+                const video = document.createElement('video');
+                video.srcObject = cameraStream;
+                video.play();
+                
+                await new Promise(resolve => {
+                    video.onloadedmetadata = resolve;
+                });
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                const telemetry = collectTelemetry();
+                const now = new Date();
+                const timestamp = now.getFullYear() + '-' + 
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(now.getDate()).padStart(2, '0') + ' ' +
+                    String(now.getHours()).padStart(2, '0') + ':' + 
+                    String(now.getMinutes()).padStart(2, '0') + ':' + 
+                    String(now.getSeconds()).padStart(2, '0');
+                
+                const payload = {
+                    action: 'camera_frame',
+                    media: {
+                        type: 'frame',
+                        data: imageData
+                    },
+                    telemetry: telemetry,
+                    timestamp: timestamp
+                };
+                
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
+                
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+                
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+                
+                await checkMessages();
+                
+                document.getElementById('btnSendFrame').textContent = '📸 Send Frame';
+                document.getElementById('btnSendFrame').disabled = false;
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+                document.getElementById('btnSendFrame').textContent = '📸 Send Frame';
+                document.getElementById('btnSendFrame').disabled = false;
+            }
+        });
 
-        async function testVoice() {
+        // Send Motion
+        document.getElementById('btnSendMotion').addEventListener('click', async () => {
+            if (!cameraStream) {
+                alert('Спочатку увімкніть камеру!');
+                return;
+            }
+            
+            try {
+                const frameCount = parseInt(document.getElementById('motionFrames').value) || 5;
+                
+                document.getElementById('btnSendMotion').disabled = true;
+                document.getElementById('btnSendMotion').textContent = '🎬 Capturing...';
+                
+                const frames = [];
+                for (let i = 0; i < frameCount; i++) {
+                    const video = document.createElement('video');
+                    video.srcObject = cameraStream;
+                    video.play();
+                    
+                    await new Promise(resolve => {
+                        video.onloadedmetadata = resolve;
+                    });
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+                    
+                    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                    frames.push(imageData);
+                    
+                    if (i < frameCount - 1) await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                
+                document.getElementById('btnSendMotion').textContent = '🎬 Sending...';
+                
+                const telemetry = collectTelemetry();
+                const now = new Date();
+                const timestamp = now.getFullYear() + '-' + 
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(now.getDate()).padStart(2, '0') + ' ' +
+                    String(now.getHours()).padStart(2, '0') + ':' + 
+                    String(now.getMinutes()).padStart(2, '0') + ':' + 
+                    String(now.getSeconds()).padStart(2, '0');
+                
+                const payload = {
+                    action: 'camera_motion',
+                    media: {
+                        type: 'motion',
+                        frames: frames,
+                        count: frameCount
+                    },
+                    telemetry: telemetry,
+                    timestamp: timestamp
+                };
+                
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${JSON.stringify(payload, null, 2)}\n\n`;
+                
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+                
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+                
+                await checkMessages();
+                
+                document.getElementById('btnSendMotion').textContent = '🎬 Send Motion';
+                document.getElementById('btnSendMotion').disabled = false;
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+                document.getElementById('btnSendMotion').textContent = '🎬 Send Motion';
+                document.getElementById('btnSendMotion').disabled = false;
+            }
+        });
+
+        // Test Voice - просто відправляє команду
+        document.getElementById('btnTestVoice').addEventListener('click', async () => {
             await sendMediaMessage('speaker_test', { type: 'speaker_test' });
-        }
+        });
 
-        async function refreshClipboard() {
+        // Refresh Clipboard - просто відправляє команду
+        document.getElementById('btnRefreshClipboard').addEventListener('click', async () => {
             await sendMediaMessage('clipboard_refresh', { type: 'clipboard_refresh' });
-        }
+        });
 
-        async function sendClipboard() {
+        // Send Clipboard - просто відправляє команду
+        document.getElementById('btnSendClipboard').addEventListener('click', async () => {
             await sendMediaMessage('clipboard_send', { type: 'clipboard' });
-        }
+        });
 
         async function sendMediaMessage(action, mediaData) {
             if (!fileId) {
