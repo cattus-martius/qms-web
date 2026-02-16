@@ -112,16 +112,21 @@
                         <label for="cbCamera">📹 Camera</label>
                         <span id="cameraStatus" class="media-status"></span>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: flex-start;">
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; gap: 10px; align-items: stretch;">
+                        <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
                             <button class="media-button" id="btnSendFrame" style="background: #3498db; cursor: pointer; opacity: 1;">📸 Send Frame</button>
                             <div style="display: flex; gap: 8px;">
                                 <button class="media-button" id="btnSendMotion" style="flex: 1; background: #3498db; cursor: pointer; opacity: 1;">🎬 Send Motion</button>
                                 <input type="number" id="motionFrames" min="2" max="30" value="5" style="width: 50px; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #2c2c2c; color: #fff; text-align: center;">
                             </div>
                             <button class="media-button" id="btnSwitchCamera" style="background: #555; cursor: pointer; opacity: 1;">🔄 Switch Camera</button>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                <span style="color: #aaa; font-size: 14px;">🔍</span>
+                                <input type="range" id="zoomSlider" min="1" max="10" step="0.1" value="1" style="flex: 1; cursor: pointer;" disabled>
+                                <span id="zoomValue" style="color: #aaa; font-size: 14px; min-width: 35px;">1.0x</span>
+                            </div>
                         </div>
-                        <video id="cameraPreview" autoplay playsinline style="width: 200px; height: 150px;"></video>
+                        <video id="cameraPreview" autoplay playsinline style="width: 200px; height: auto; border-radius: 6px; background: #000;"></video>
                     </div>
                 </div>
                 
@@ -723,6 +728,18 @@
                     preview.srcObject = cameraStream;
                     preview.style.display = 'block';
                     document.getElementById('cameraStatus').textContent = '✅ Active';
+                    
+                    // Enable zoom slider if supported
+                    const track = cameraStream.getVideoTracks()[0];
+                    const capabilities = track.getCapabilities();
+                    const zoomSlider = document.getElementById('zoomSlider');
+                    
+                    if (capabilities.zoom) {
+                        zoomSlider.min = capabilities.zoom.min;
+                        zoomSlider.max = capabilities.zoom.max;
+                        zoomSlider.value = capabilities.zoom.min;
+                        zoomSlider.disabled = false;
+                    }
                 } catch (error) {
                     document.getElementById('cameraStatus').textContent = '❌ Error: ' + error.message;
                     e.target.checked = false;
@@ -732,7 +749,26 @@
                     cameraStream.getTracks().forEach(track => track.stop());
                     document.getElementById('cameraPreview').style.display = 'none';
                     document.getElementById('cameraStatus').textContent = '';
+                    document.getElementById('zoomSlider').disabled = true;
+                    document.getElementById('zoomSlider').value = 1;
+                    document.getElementById('zoomValue').textContent = '1.0x';
                 }
+            }
+        });
+
+        document.getElementById('zoomSlider').addEventListener('input', async (e) => {
+            if (!cameraStream) return;
+            
+            const zoomLevel = parseFloat(e.target.value);
+            const track = cameraStream.getVideoTracks()[0];
+            
+            try {
+                await track.applyConstraints({
+                    advanced: [{ zoom: zoomLevel }]
+                });
+                document.getElementById('zoomValue').textContent = zoomLevel.toFixed(1) + 'x';
+            } catch (error) {
+                console.error('Zoom error:', error);
             }
         });
 
