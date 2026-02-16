@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q Mailbox</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { font-size: 24px; margin-bottom: 20px; color: #333; }
+        .status { padding: 10px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+        .status.disconnected { background: #fee; color: #c33; }
+        .status.connected { background: #efe; color: #3c3; }
+        .messages { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 20px; background: #fafafa; }
+        .message { padding: 8px; margin-bottom: 8px; border-radius: 6px; background: white; border-left: 3px solid #007aff; }
+        .message .meta { font-size: 12px; color: #666; margin-bottom: 4px; }
+        .message .text { font-size: 14px; color: #333; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        button { padding: 12px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; }
+        .btn-primary { background: #007aff; color: white; }
+        .btn-secondary { background: #5ac8fa; color: white; }
+        .btn-auth { background: #34c759; color: white; width: 100%; margin-bottom: 20px; }
+        .btn-primary:active { background: #0051d5; }
+        .btn-secondary:active { background: #32ade6; }
+        .btn-auth:active { background: #248a3d; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💙 Q Mailbox</h1>
+        
+        <div id="authSection">
+            <button class="btn-auth" onclick="handleAuth()">🔐 Авторизуватися через Google</button>
+        </div>
+
+        <div id="mailboxSection" class="hidden">
+            <div id="status" class="status disconnected">
+                ⚠️ Не підключено до Google Drive
+            </div>
+
+            <div class="messages" id="messages">
+                <div style="text-align: center; color: #999; padding: 20px;">
+                    Повідомлень поки немає
+                </div>
+            </div>
+
+            <div class="input-group">
+                <input type="text" id="messageInput" placeholder="Введіть повідомлення..." />
+                <button class="btn-primary" onclick="sendMessage()">📤 Відправити</button>
+            </div>
+
+            <div class="input-group">
+                <button class="btn-secondary" onclick="checkMessages()" style="flex: 1;">🔍 Перевірити</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+        // Config: для GitHub Pages вбудовані credentials (API Key обмежений referrer)
+        const CONFIG = {
+            clientId: '737474602371-6ip4hr60vrv69e84h05b386bde7ag5va.apps.googleusercontent.com',
+            apiKey: 'AIzaSyDuSpV6pdXso-hN-GeTmFRSbEsrGKUet8o',
+            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            mailboxPath: 'mailbox/q_vadym_chat/messages.txt'
+        };
+
+        let isAuthorized = false;
+        let fileId = null;
+
+        function handleAuth() {
+            gapi.load('client:auth2', initClient);
+        }
+
+        function initClient() {
+            gapi.client.init({
+                apiKey: CONFIG.apiKey,
+                clientId: CONFIG.clientId,
+                discoveryDocs: CONFIG.discoveryDocs,
+                scope: CONFIG.scope
+            }).then(() => {
+                const authInstance = gapi.auth2.getAuthInstance();
+                authInstance.isSignedIn.listen(updateSigninStatus);
+                
+                if (authInstance.isSignedIn.get()) {
+                    updateSigninStatus(true);
+                } else {
+                    authInstance.signIn();
+                }
+            });
+        }
+
+        function updateSigninStatus(isSignedIn) {
+            if (isSignedIn) {
+                isAuthorized = true;
+                document.getElementById('authSection').classList.add('hidden');
+                document.getElementById('mailboxSection').classList.remove('hidden');
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = '✅ Підключено до Google Drive';
+                findMailboxFile();
+            }
+        }
+
+        async function findMailboxFile() {
+            try {
+                const response = await gapi.client.drive.files.list({
+                    q: `name='messages.txt' and trashed=false`,
+                    fields: 'files(id, name, parents)',
+                    spaces: 'drive'
+                });
+
+                if (response.result.files && response.result.files.length > 0) {
+                    fileId = response.result.files[0].id;
+                    console.log('Mailbox file found:', fileId);
+                    checkMessages();
+                } else {
+                    console.log('Mailbox file not found');
+                }
+            } catch (error) {
+                console.error('Error finding mailbox:', error);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            if (!fileId) {
+                alert('Mailbox файл не знайдено');
+                return;
+            }
+
+            try {
+                const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: Q]\n${message}\n\n`;
+
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+
+                input.value = '';
+                addMessageToUI('QMS', message, timestamp);
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Помилка відправки: ' + error.message);
+            }
+        }
+
+        async function checkMessages() {
+            if (!fileId) return;
+
+            try {
+                const content = await readFile();
+                parseAndDisplayMessages(content);
+            } catch (error) {
+                console.error('Error checking messages:', error);
+            }
+        }
+
+        async function readFile() {
+            const response = await gapi.client.drive.files.get({
+                fileId: fileId,
+                alt: 'media'
+            });
+            return response.body || '';
+        }
+
+        function parseAndDisplayMessages(content) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+
+            if (!content.trim()) {
+                messagesDiv.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">Повідомлень поки немає</div>';
+                return;
+            }
+
+            const lines = content.split('\n');
+            let currentMessage = null;
+
+            for (const line of lines) {
+                if (line.startsWith('[')) {
+                    if (currentMessage) {
+                        addMessageToUI(currentMessage.from, currentMessage.text, currentMessage.timestamp);
+                    }
+                    
+                    const match = line.match(/\[([^\]]+)\] \[FROM: ([^\]]+)\] \[TO: ([^\]]+)\]/);
+                    if (match) {
+                        currentMessage = {
+                            timestamp: match[1],
+                            from: match[2],
+                            to: match[3],
+                            text: ''
+                        };
+                    }
+                } else if (currentMessage && line.trim()) {
+                    currentMessage.text += line + ' ';
+                }
+            }
+
+            if (currentMessage) {
+                addMessageToUI(currentMessage.from, currentMessage.text, currentMessage.timestamp);
+            }
+        }
+
+        function addMessageToUI(from, text, timestamp) {
+            const messagesDiv = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message';
+            messageEl.innerHTML = `
+                <div class="meta">${from} • ${timestamp}</div>
+                <div class="text">${text.trim()}</div>
+            `;
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
