@@ -1086,9 +1086,32 @@
         async function updateClipboardPreview() {
             try {
                 const items = await navigator.clipboard.read();
+                console.log('Clipboard items:', items.length);
+                
                 for (const item of items) {
+                    console.log('Item types:', item.types);
+                    
+                    // Try image/png first
                     if (item.types.includes('image/png')) {
                         const blob = await item.getType('image/png');
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.getElementById('screenPreview');
+                            const ctx = canvas.getContext('2d');
+                            const scale = Math.min(200 / img.width, 150 / img.height);
+                            canvas.width = img.width * scale;
+                            canvas.height = img.height * scale;
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            canvas.style.display = 'block';
+                            document.getElementById('clipboardStatus').textContent = '✅ Image in clipboard';
+                        };
+                        img.src = URL.createObjectURL(blob);
+                        return;
+                    }
+                    
+                    // Try image/jpeg
+                    if (item.types.includes('image/jpeg')) {
+                        const blob = await item.getType('image/jpeg');
                         const img = new Image();
                         img.onload = () => {
                             const canvas = document.getElementById('screenPreview');
@@ -1106,6 +1129,7 @@
                 }
                 document.getElementById('clipboardStatus').textContent = '📋 No image in clipboard';
             } catch (error) {
+                console.error('Clipboard error:', error);
                 document.getElementById('clipboardStatus').textContent = '❌ Error: ' + error.message;
             }
         }
