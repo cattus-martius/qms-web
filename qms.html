@@ -54,6 +54,7 @@
 
             <div class="input-group">
                 <button class="btn-secondary" onclick="checkMessages()" style="flex: 1;">🔍 Перевірити</button>
+                <button class="btn-secondary" onclick="newSession()" style="flex: 1; background: #ff3b30;">🗑️ Новий сеанс</button>
             </div>
         </div>
     </div>
@@ -169,6 +170,29 @@
             } catch (error) {
                 console.error('Error creating mailbox:', error);
                 alert('❌ Помилка створення файлу: ' + error.message);
+            }
+        }
+
+        async function newSession() {
+            if (!confirm('Видалити поточний mailbox і почати новий сеанс?')) {
+                return;
+            }
+
+            try {
+                // Видалити старий файл
+                if (fileId) {
+                    await gapi.client.drive.files.delete({
+                        fileId: fileId
+                    });
+                    console.log('Old mailbox deleted');
+                }
+
+                // Створити новий
+                fileId = null;
+                await createMailboxFile();
+            } catch (error) {
+                console.error('Error creating new session:', error);
+                alert('❌ Помилка створення нового сеансу: ' + error.message);
             }
         }
 
