@@ -73,6 +73,7 @@
                 <button class="tab-button active" onclick="switchTab('chat')">Chat</button>
                 <button class="tab-button" onclick="switchTab('media')">Media</button>
                 <button class="tab-button" onclick="switchTab('settings')">Settings</button>
+                <button class="tab-button" onclick="switchTab('sessions')">Sessions</button>
             </div>
 
             <!-- Chat Tab -->
@@ -229,6 +230,45 @@
                     <input type="checkbox" id="cbGPS">
                     <label for="cbGPS">📍 GPS</label>
                     <span id="tvGPS" class="sensor-value">off</span>
+                </div>
+            </div>
+
+            <!-- Sessions Tab -->
+            <div id="sessions-tab" class="tab-content">
+                <h3>Session Management</h3>
+                
+                <!-- Daemon Status -->
+                <div class="media-section">
+                    <div class="media-header">
+                        <label>🔧 QBS Daemon</label>
+                        <span id="daemonStatus" class="media-status">⚫ Unknown</span>
+                    </div>
+                    <button class="media-button" id="btnPing" onclick="pingDaemon()" style="background: #3498db; cursor: pointer; opacity: 1;">📡 Ping</button>
+                </div>
+
+                <!-- Agent Selection -->
+                <div class="media-section">
+                    <div class="media-header">
+                        <label>🤖 Select Agent</label>
+                    </div>
+                    <select id="agentSelect" style="width: 100%; padding: 10px; border: 1px solid #555; border-radius: 6px; background: #2c2c2c; color: #fff; font-size: 14px; margin-bottom: 10px;">
+                        <option value="">Loading...</option>
+                    </select>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="media-button" id="btnStartSession" onclick="startSession()" style="background: #27ae60; cursor: pointer; opacity: 1; flex: 1;">🚀 Start Session</button>
+                        <button class="media-button" id="btnStopSession" onclick="stopSession()" style="background: #e74c3c; cursor: pointer; opacity: 1; flex: 1;">🛑 Stop Session</button>
+                    </div>
+                </div>
+
+                <!-- Active Sessions -->
+                <div class="media-section">
+                    <div class="media-header">
+                        <label>📊 Active Sessions</label>
+                        <button class="media-button" onclick="checkStatus()" style="background: #3498db; cursor: pointer; opacity: 1; padding: 6px 12px; margin: 0;">🔄 Refresh</button>
+                    </div>
+                    <div id="sessionsList" style="color: #aaa; font-size: 14px; margin-top: 10px;">
+                        No sessions
+                    </div>
                 </div>
             </div>
         </div>
@@ -616,6 +656,12 @@
             
             document.getElementById(tabName + '-tab').classList.add('active');
             event.target.classList.add('active');
+            
+            // Auto-load agents when switching to Sessions tab
+            if (tabName === 'sessions') {
+                listAgents();
+                checkStatus();
+            }
         }
 
         // Telemetry
@@ -1264,6 +1310,154 @@
                 console.error('Error sending media:', error);
                 alert('Помилка відправки: ' + error.message);
             }
+        }
+
+        // ========== SESSION MANAGEMENT ==========
+
+        async function sendDirective(directive) {
+            try {
+                const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+                const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: QBS]\n${directive}\n\n`;
+
+                const currentContent = await readFile();
+                const newContent = currentContent + formattedMessage;
+
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: newContent
+                });
+
+                console.log('Directive sent:', directive);
+                
+                // Wait for response
+                setTimeout(() => readDirectiveResponse(), 2000);
+            } catch (error) {
+                console.error('Error sending directive:', error);
+                alert('Помилка відправки директиви: ' + error.message);
+            }
+        }
+
+        async function readDirectiveResponse() {
+            try {
+                const content = await readFile();
+                const lines = content.split('\n');
+                
+                // Шукаємо останню відповідь від QBS
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    if (lines[i].includes('[FROM: QBS]') && lines[i].includes('[TO: QMS]')) {
+                        // Читаємо наступні рядки до порожнього
+                        let response = '';
+                        for (let j = i + 1; j < lines.length && lines[j].trim(); j++) {
+                            response += lines[j] + '\n';
+                        }
+                        
+                        if (response.includes('[DIRECTIVE_RESPONSE:')) {
+                            const jsonMatch = response.match(/\{[\s\S]*\}/);
+                            if (jsonMatch) {
+                                return JSON.parse(jsonMatch[0]);
+                            }
+                        }
+                    }
+                }
+                return null;
+            } catch (error) {
+                console.error('Error reading response:', error);
+                return null;
+            }
+        }
+
+        async function pingDaemon() {
+            document.getElementById('daemonStatus').textContent = '⏳ Pinging...';
+            await sendDirective('[DIRECTIVE: ping]');
+            
+            setTimeout(async () => {
+                const response = await readDirectiveResponse();
+                if (response && response.status === 'pong') {
+                    document.getElementById('daemonStatus').textContent = '🟢 Online';
+                } else {
+                    document.getElementById('daemonStatus').textContent = '🔴 Offline';
+                }
+            }, 3000);
+        }
+
+        async function listAgents() {
+            await sendDirective('[DIRECTIVE: list_agents]');
+            
+            setTimeout(async () => {
+                const response = await readDirectiveResponse();
+                if (response && response.agents) {
+                    const select = document.getElementById('agentSelect');
+                    select.innerHTML = '<option value="">-- Select Agent --</option>';
+                    response.agents.forEach(agent => {
+                        const option = document.createElement('option');
+                        option.value = agent;
+                        option.textContent = agent;
+                        select.appendChild(option);
+                    });
+                }
+            }, 3000);
+        }
+
+        async function startSession() {
+            const agent = document.getElementById('agentSelect').value;
+            if (!agent) {
+                alert('Виберіть агента!');
+                return;
+            }
+            
+            await sendDirective(`[DIRECTIVE: start_session agent=${agent}]`);
+            
+            setTimeout(async () => {
+                const response = await readDirectiveResponse();
+                if (response) {
+                    alert(JSON.stringify(response, null, 2));
+                    await checkStatus();
+                }
+            }, 3000);
+        }
+
+        async function stopSession() {
+            const agent = document.getElementById('agentSelect').value;
+            if (!agent) {
+                alert('Виберіть агента!');
+                return;
+            }
+            
+            await sendDirective(`[DIRECTIVE: stop_session agent=${agent}]`);
+            
+            setTimeout(async () => {
+                const response = await readDirectiveResponse();
+                if (response) {
+                    alert(JSON.stringify(response, null, 2));
+                    await checkStatus();
+                }
+            }, 3000);
+        }
+
+        async function checkStatus() {
+            await sendDirective('[DIRECTIVE: check_status]');
+            
+            setTimeout(async () => {
+                const response = await readDirectiveResponse();
+                if (response) {
+                    const list = document.getElementById('sessionsList');
+                    if (response.status === 'no_sessions') {
+                        list.innerHTML = '<div style="color: #aaa;">No active sessions</div>';
+                    } else {
+                        let html = '';
+                        for (const [agent, info] of Object.entries(response)) {
+                            const status = info.status === 'running' ? '🟢' : '⚫';
+                            const type = info.type || 'unknown';
+                            html += `<div style="padding: 8px; background: #1a1a1a; border-radius: 4px; margin-bottom: 4px;">
+                                ${status} <strong>${agent}</strong> (${type}) - PID: ${info.pid || 'N/A'}
+                            </div>`;
+                        }
+                        list.innerHTML = html;
+                    }
+                }
+            }, 3000);
         }
     </script>
 </body>
