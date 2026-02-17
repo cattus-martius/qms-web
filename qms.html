@@ -659,6 +659,7 @@
             
             // Auto-load agents when switching to Sessions tab
             if (tabName === 'sessions') {
+                pingDaemon();
                 listAgents();
                 checkStatus();
             }
