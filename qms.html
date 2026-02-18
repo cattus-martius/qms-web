@@ -63,6 +63,12 @@
             <span class="server-info" id="serverInfo">Google Drive: 🔴 Not ready</span>
         </div>
         
+        <div id="driveError" style="display: none; background: #ff6b6b; color: white; padding: 12px; border-radius: 8px; margin: 10px 0; text-align: center;">
+            <span id="driveErrorMessage">⚠️ Помилка доступу до Google Drive</span>
+            <button id="checkSessionBtn" onclick="checkSession()" style="margin-left: 10px; padding: 6px 12px; background: white; color: #ff6b6b; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Перевірити сесію</button>
+            <button id="reloginBtn" onclick="handleRelogin()" style="display: none; margin-left: 10px; padding: 6px 12px; background: white; color: #ff6b6b; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Перелогінитися</button>
+        </div>
+        
         <div id="authSection">
             <button class="btn-auth" onclick="handleAuth()">🔐 Авторизуватися через Google</button>
         </div>
@@ -1315,65 +1321,59 @@
 
         // ========== SESSION MANAGEMENT ==========
 
-        async function checkTokenValid() {
+        function showDriveError(message = '⚠️ Помилка доступу до Google Drive') {
+            document.getElementById('driveError').style.display = 'block';
+            document.getElementById('driveErrorMessage').textContent = message;
+            document.getElementById('checkSessionBtn').style.display = 'inline-block';
+            document.getElementById('reloginBtn').style.display = 'none';
+        }
+
+        function hideDriveError() {
+            document.getElementById('driveError').style.display = 'none';
+        }
+
+        async function checkSession() {
             try {
                 const authInstance = gapi.auth2.getAuthInstance();
                 if (!authInstance || !authInstance.isSignedIn.get()) {
-                    return false;
+                    document.getElementById('driveErrorMessage').textContent = '❌ Сесія Google застаріла';
+                    document.getElementById('checkSessionBtn').style.display = 'none';
+                    document.getElementById('reloginBtn').style.display = 'inline-block';
+                    return;
                 }
 
                 const token = authInstance.currentUser.get().getAuthResponse();
-                
-                // Перевірити чи не expired
                 if (token.expires_at && token.expires_at < Date.now()) {
-                    console.log('Token expired');
-                    return false;
+                    document.getElementById('driveErrorMessage').textContent = '❌ Токен застарів';
+                    document.getElementById('checkSessionBtn').style.display = 'none';
+                    document.getElementById('reloginBtn').style.display = 'inline-block';
+                    return;
                 }
-                
-                // Спробувати простий API запит
+
+                // Спробувати API запит
                 await gapi.client.drive.about.get({fields: 'user'});
-                return true;
+                
+                // Токен валідний
+                hideDriveError();
+                alert('✅ Сесія валідна! Спробуйте ще раз.');
             } catch (error) {
-                console.error('Token validation error:', error);
-                if (error.status === 401 || error.status === 403) {
-                    return false;
-                }
-                throw error;
+                console.error('Session check error:', error);
+                document.getElementById('driveErrorMessage').textContent = '❌ Сесія Google застаріла';
+                document.getElementById('checkSessionBtn').style.display = 'none';
+                document.getElementById('reloginBtn').style.display = 'inline-block';
             }
         }
 
-        async function refreshToken() {
-            try {
-                console.log('Attempting to refresh token...');
-                const authInstance = gapi.auth2.getAuthInstance();
-                const user = authInstance.currentUser.get();
-                await user.reloadAuthResponse();
-                console.log('Token refreshed successfully');
-                return true;
-            } catch (error) {
-                console.error('Token refresh failed:', error);
-                return false;
-            }
+        function handleRelogin() {
+            const authButton = document.getElementById('authorize_button');
+            const signoutButton = document.getElementById('signout_button');
+            if (authButton) authButton.style.display = 'block';
+            if (signoutButton) signoutButton.style.display = 'none';
+            hideDriveError();
         }
 
         async function sendDirective(directive) {
             try {
-                // Перевірити токен перед відправкою
-                if (!await checkTokenValid()) {
-                    console.log('Token invalid, attempting refresh...');
-                    
-                    // Спробувати оновити токен
-                    if (await refreshToken()) {
-                        console.log('Token refreshed, continuing...');
-                    } else {
-                        // Не вдалося оновити - показати кнопку Sign In
-                        alert('Сесія Google застаріла. Будь ласка, перелогіньтесь!');
-                        document.getElementById('authorize_button').style.display = 'block';
-                        document.getElementById('signout_button').style.display = 'none';
-                        return;
-                    }
-                }
-
                 const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
                 const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: QBS]\n${directive}\n\n`;
 
@@ -1388,18 +1388,16 @@
                 });
 
                 console.log('Directive sent:', directive);
-                
-                // Wait for response
-                setTimeout(() => readDirectiveResponse(), 2000);
+                hideDriveError(); // Сховати помилку якщо успішно
+                return true;
             } catch (error) {
                 console.error('Error sending directive:', error);
-                if (error.status === 401) {
-                    alert('Токен Google застарів. Перелогіньтесь!');
-                    document.getElementById('authorize_button').style.display = 'block';
-                    document.getElementById('signout_button').style.display = 'none';
+                if (error.status === 401 || error.status === 403) {
+                    showDriveError('⚠️ Помилка доступу до Google Drive');
                 } else {
-                    alert('Помилка відправки директиви: ' + error.message);
+                    showDriveError(`⚠️ Помилка: ${error.message}`);
                 }
+                return false;
             }
         }
 
@@ -1434,7 +1432,12 @@
 
         async function pingDaemon() {
             document.getElementById('daemonStatus').textContent = '⏳ Pinging...';
-            await sendDirective('[DIRECTIVE: ping]');
+            const success = await sendDirective('[DIRECTIVE: ping]');
+            
+            if (!success) {
+                document.getElementById('daemonStatus').textContent = '🔴 Offline';
+                return; // Зупинити виконання
+            }
             
             setTimeout(async () => {
                 const response = await readDirectiveResponse();
@@ -1447,7 +1450,11 @@
         }
 
         async function listAgents() {
-            await sendDirective('[DIRECTIVE: list_agents]');
+            const success = await sendDirective('[DIRECTIVE: list_agents]');
+            
+            if (!success) {
+                return; // Зупинити виконання
+            }
             
             setTimeout(async () => {
                 const response = await readDirectiveResponse();
