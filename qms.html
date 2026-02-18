@@ -1315,8 +1315,65 @@
 
         // ========== SESSION MANAGEMENT ==========
 
+        async function checkTokenValid() {
+            try {
+                const authInstance = gapi.auth2.getAuthInstance();
+                if (!authInstance || !authInstance.isSignedIn.get()) {
+                    return false;
+                }
+
+                const token = authInstance.currentUser.get().getAuthResponse();
+                
+                // Перевірити чи не expired
+                if (token.expires_at && token.expires_at < Date.now()) {
+                    console.log('Token expired');
+                    return false;
+                }
+                
+                // Спробувати простий API запит
+                await gapi.client.drive.about.get({fields: 'user'});
+                return true;
+            } catch (error) {
+                console.error('Token validation error:', error);
+                if (error.status === 401 || error.status === 403) {
+                    return false;
+                }
+                throw error;
+            }
+        }
+
+        async function refreshToken() {
+            try {
+                console.log('Attempting to refresh token...');
+                const authInstance = gapi.auth2.getAuthInstance();
+                const user = authInstance.currentUser.get();
+                await user.reloadAuthResponse();
+                console.log('Token refreshed successfully');
+                return true;
+            } catch (error) {
+                console.error('Token refresh failed:', error);
+                return false;
+            }
+        }
+
         async function sendDirective(directive) {
             try {
+                // Перевірити токен перед відправкою
+                if (!await checkTokenValid()) {
+                    console.log('Token invalid, attempting refresh...');
+                    
+                    // Спробувати оновити токен
+                    if (await refreshToken()) {
+                        console.log('Token refreshed, continuing...');
+                    } else {
+                        // Не вдалося оновити - показати кнопку Sign In
+                        alert('Сесія Google застаріла. Будь ласка, перелогіньтесь!');
+                        document.getElementById('authorize_button').style.display = 'block';
+                        document.getElementById('signout_button').style.display = 'none';
+                        return;
+                    }
+                }
+
                 const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
                 const formattedMessage = `[${timestamp}] [FROM: QMS] [TO: QBS]\n${directive}\n\n`;
 
@@ -1336,7 +1393,13 @@
                 setTimeout(() => readDirectiveResponse(), 2000);
             } catch (error) {
                 console.error('Error sending directive:', error);
-                alert('Помилка відправки директиви: ' + error.message);
+                if (error.status === 401) {
+                    alert('Токен Google застарів. Перелогіньтесь!');
+                    document.getElementById('authorize_button').style.display = 'block';
+                    document.getElementById('signout_button').style.display = 'none';
+                } else {
+                    alert('Помилка відправки директиви: ' + error.message);
+                }
             }
         }
 
